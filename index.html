@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EVU // HQ — Штаб</title>
+<meta name="robots" content="noindex,nofollow">
+<meta name="color-scheme" content="dark">
+<link rel="stylesheet" href="hq.css">
+</head>
+<body>
+<div class="bg" aria-hidden="true"><div class="g"></div><div class="s"></div></div>
+<div class="wrap" id="boot"><div class="panel"><span class="tag" id="bt">ПРОВЕРКА СЕССИИ...</span></div></div>
+
+<div class="shell" id="shell" hidden>
+  <aside class="side">
+    <a class="brand" href="index.html"><svg viewBox="0 0 120 120" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="60" cy="60" r="56"/><circle cx="60" cy="60" r="42" stroke-dasharray="3 5"/><path d="M30 32 L60 92 L90 32"/><path d="M45 32 L60 62 L75 32"/></svg><span><b>EVU // HQ</b><small>HEADQUARTERS</small></span></a>
+    <nav class="tabs" id="tabs" aria-label="Разделы Штаба">
+      <button class="tab on" data-t="dash" type="button">Главная</button>
+      <button class="tab" data-t="roster" type="button">Ростер</button>
+      <button class="tab" data-t="units" type="button">Подразделения</button>
+      <button class="tab" data-t="academy" type="button">Академия</button>
+      <a class="tab" href="admin.html" id="tSet" hidden>Админка ↗</a>
+    </nav>
+    <div class="me"><span>ВЫ ВОШЛИ КАК</span><b id="meN">—</b><span id="meR">—</span></div>
+  </aside>
+  <div class="mainc">
+    <div class="top"><h2 id="vt">Главная</h2><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span class="bdg active" id="roleBdg">—</span><button class="btn ghost sm" id="refresh" type="button">Обновить</button><button class="btn ghost sm" id="out" type="button">Выйти</button></div></div>
+    <div class="view" id="view"></div>
+  </div>
+</div>
+<div class="demo" id="demo" hidden>DEMO MODE // ДАННЫЕ ТОЛЬКО В ЭТОМ БРАУЗЕРЕ // РЕАЛЬНАЯ БАЗА И DISCORD ПОДКЛЮЧАЮТСЯ ЧЕРЕЗ SUPABASE (config.js)</div>
+
+<script src="config.js"></script>
+<script src="core.js"></script>
+<script>
+(function () {
+"use strict";
+var X = HQ.ui, $ = X.$, $$ = X.$$, esc = X.esc, api = HQ.api, U = null, D = null, tab = "dash", F = { q: "", unit: "all", rank: "all", status: "all" };
+var KL = { promotion: "Повышение", demotion: "Понижение", transfer: "Перевод", discharge: "Исключение", reinstate: "Восстановление" }, SL = { active: "Активен", leave: "Отпуск", discharged: "Исключён" };
+var TT = { dash: "Главная", roster: "Ростер", units: "Подразделения", academy: "Академия" };
+var can = function (n) { return HQ.RK[U.role] >= n; };
+var bdg = function (s) { return '<span class="bdg ' + esc(s) + '">' + esc(SL[s] || s) + "</span>"; };
+function fail(e) { if (e && e.code === "unauthorized") { location.replace("login.html"); return; } X.toast(e && e.message || "Ошибка", true); }
+async function data(force) { if (!D || force) D = await api("members_list"); return D; }
+var rankOf = function (id) { return D.ranks.filter(function (r) { return r.id === id; })[0]; }, rn = function (id) { var r = rankOf(id); return r ? r.name : "—"; };
+var un = function (id) { var u = D.units.filter(function (x) { return x.id === id; })[0]; return u ? u.name : "—"; };
+var mOf = function (id) { return D.members.filter(function (m) { return m.discord_id === id; })[0]; };
+function opts(list, val, sel, blank) { return (blank ? '<option value="">' + esc(blank) + "</option>" : "") + list.map(function (x) { return '<option value="' + esc(x[0]) + '"' + (String(x[0]) === String(sel) ? " selected" : "") + ">" + esc(x[1]) + "</option>"; }).join(""); }
+function ownLevel() { if (U.role === "owner") return Infinity; var m = mOf(U.discord_id), r = m && m.status === "active" && rankOf(m.rank_id); return r ? r.level : -1; }
+function field(id, label, ctl, hint) { return '<div class="fld"><label for="' + id + '">' + esc(label) + "</label>" + ctl + (hint ? '<div class="h">' + esc(hint) + "</div>" : "") + "</div>"; }
+
+/* ---------- запуск ---------- */
+if (!HQ.configured) $("#demo").hidden = false;
+HQ.check().then(function (u) {
+  if (!u) return location.replace("login.html");
+  U = u; $("#boot").hidden = true; $("#shell").hidden = false;
+  $("#meN").textContent = u.name; $("#meR").textContent = "РОЛЬ // " + HQ.ROLES[u.role]; $("#roleBdg").textContent = HQ.ROLES[u.role];
+  $("#tSet").hidden = !can(3); go(location.hash.slice(1) || "dash");
+}, function (e) { $("#bt").textContent = e.message; });
+$("#tabs").onclick = function (e) { var b = e.target.closest(".tab"); if (b && b.dataset.t) go(b.dataset.t); };
+$("#refresh").onclick = function () { D = null; go(tab); };
+$("#out").onclick = function () { HQ.logout().then(function () { location.replace("login.html"); }); };
+window.addEventListener("hashchange", function () { var t = location.hash.slice(1); if (TT[t] && t !== tab) go(t); });
+
+function go(t) {
+  if (!TT[t]) t = "dash";
+  tab = t; history.replaceState(null, "", "#" + t);
+  $$(".tab").forEach(function (b) { b.classList.toggle("on", b.dataset.t === t); }); $("#vt").textContent = TT[t];
+  var v = $("#view"); v.classList.remove("view"); void v.offsetWidth; v.classList.add("view");
+  v.innerHTML = '<div class="box"><div class="skl" style="width:60%"></div><div class="skl"></div><div class="skl" style="width:80%"></div></div>';
+  ({ dash: vDash, roster: vRoster, units: vUnits, academy: vAcademy })[t]().catch(function (e) { if (e.code === "unauthorized") return fail(e); v.innerHTML = '<div class="box empty">' + esc(e.message) + '<br><br><button class="btn ghost sm" id="rr" type="button">Повторить</button></div>'; $("#rr").onclick = function () { go(t); }; });
+}
+
+/* ---------- главная ---------- */
+async function vDash() {
+  var d = await api("dashboard"); await data(); var c = d.counts;
+  $("#view").innerHTML = '<div class="sg">' + [["ВСЕГО БОЙЦОВ", c.total], ["АКТИВНЫХ", c.active], ["В ОТПУСКЕ", c.leave], ["ИСКЛЮЧЁННЫХ", c.discharged], ["ПОДРАЗДЕЛЕНИЙ", c.units]].map(function (x) { return '<div class="sc"><small>' + x[0] + '</small><b>' + x[1] + "</b></div>"; }).join("") + "</div>" +
+    '<div class="two"><div class="box"><h3>Последние изменения состава</h3>' + (d.recent.length ? d.recent.map(function (p) { return '<div class="row click" tabindex="0" data-m="' + esc(p.member_id) + '"><span><b>' + esc(p.callsign) + "</b> · " + esc(KL[p.kind] || p.kind) + " · " + esc(p.kind === "transfer" ? un(p.from_unit) + " → " + un(p.to_unit) : rn(p.from_rank) + " → " + rn(p.to_rank)) + "</span><small>" + esc(X.fmtDay(p.promoted_at)) + "</small></div>"; }).join("") : '<div class="empty">Изменений пока нет</div>') + "</div>" +
+    '<div class="box"><h3>Быстрые ссылки</h3><div class="stb" style="flex-direction:column;align-items:stretch"><button class="btn ghost sm" data-go="roster" type="button">Ростер</button><button class="btn ghost sm" data-go="units" type="button">Подразделения</button><button class="btn ghost sm" data-go="academy" type="button">Академия</button>' + (can(3) ? '<a class="btn sm" href="admin.html">Админка: ключи и ранги</a>' : "") + "</div></div></div>";
+  bindOpen($("#view")); $$("[data-go]").forEach(function (b) { b.onclick = function () { go(b.dataset.go); }; });
+}
+function bindOpen(root) { $$("[data-m]", root).forEach(function (r) { r.onclick = function () { openMember(r.dataset.m); }; r.onkeydown = function (e) { if (e.key === "Enter") openMember(r.dataset.m); }; }); }
+
+/* ---------- ростер ---------- */
+async function vRoster() {
+  await data();
+  $("#view").innerHTML = '<div class="tools"><input class="fi grow" id="q" type="search" placeholder="Поиск: позывной, Discord ник или ID" aria-label="Поиск" value="' + esc(F.q) + '"><select class="fi" id="fu" aria-label="Подразделение">' + opts(D.units.map(function (u) { return [u.id, u.name]; }), 0, F.unit, "Все подразделения").replace('<option value="">', '<option value="all">') + '</select><select class="fi" id="fr" aria-label="Ранг">' + opts(D.ranks.map(function (r) { return [r.id, r.name]; }), 0, F.rank, "Все ранги").replace('<option value="">', '<option value="all">') + '</select><select class="fi" id="fs" aria-label="Статус">' + opts([["active", "Активен"], ["leave", "Отпуск"], ["discharged", "Исключён"]], 0, F.status, "Все статусы").replace('<option value="">', '<option value="all">') + "</select>" + (can(2) ? '<button class="btn sm" id="add" type="button">Добавить бойца</button>' : "") + '<span class="mono" id="cnt" style="font:500 11px var(--mono);letter-spacing:.14em;color:#8e8e8e;margin-left:auto"></span></div><div class="tw" id="tbl"></div>';
+  $("#q").oninput = function () { F.q = this.value; draw(); }; $("#fu").onchange = function () { F.unit = this.value; draw(); }; $("#fr").onchange = function () { F.rank = this.value; draw(); }; $("#fs").onchange = function () { F.status = this.value; draw(); };
+  if ($("#add")) $("#add").onclick = function () { addMember(); };
+  draw();
+}
+function draw() {
+  var q = F.q.trim().toLowerCase(), l = D.members.filter(function (m) { return (F.unit === "all" || String(m.unit_id) === F.unit) && (F.rank === "all" || String(m.rank_id) === F.rank) && (F.status === "all" || m.status === F.status) && (!q || (m.callsign + " " + (m.discord_name || "") + " " + m.discord_id).toLowerCase().indexOf(q) >= 0); });
+  $("#cnt").textContent = "ПОКАЗАНО: " + l.length + " ИЗ " + D.members.length;
+  $("#tbl").innerHTML = l.length ? "<table><thead><tr><th>Позывной</th><th>Ранг</th><th>Подразделение</th><th>Статус</th><th>Вступил</th><th>Discord ID</th></tr></thead><tbody>" + l.map(function (m) { return '<tr class="click" tabindex="0" data-m="' + esc(m.discord_id) + '"><td><b>' + esc(m.callsign) + "</b>" + (m.is_instructor ? ' <span class="bdg solid">ИНСТР.</span>' : "") + "</td><td>" + esc(rn(m.rank_id)) + "</td><td>" + esc(un(m.unit_id)) + "</td><td>" + bdg(m.status) + "</td><td>" + esc(X.fmtDay(m.joined_at)) + '</td><td class="mono" style="font-size:12px">' + esc(m.discord_id) + "</td></tr>"; }).join("") + "</tbody></table>" : '<div class="empty">' + (D.members.length ? "По запросу бойцов не найдено." : "Ростер пуст. Добавьте первого бойца.") + "</div>";
+  bindOpen($("#tbl"));
+}
+function addMember(pre) {
+  pre = pre || {}; var lvl = ownLevel(), rs = D.ranks.filter(function (r) { return r.level < lvl; });
+  return X.formModal("Добавить бойца", field("a1", "Discord ID", '<input class="fi" id="a1" inputmode="numeric" value="' + esc(pre.discord_id || "") + '">') + field("a2", "Ник в Discord", '<input class="fi" id="a2">') + field("a3", "Позывной", '<input class="fi" id="a3" maxlength="40" value="' + esc(pre.callsign || "") + '">') + field("a4", "Ранг", '<select class="fi" id="a4">' + opts(rs.map(function (r) { return [r.id, r.name]; }), 0, "", "Без ранга") + "</select>") + field("a5", "Подразделение", '<select class="fi" id="a5">' + opts(D.units.map(function (u) { return [u.id, u.name]; }), 0, "", "Без подразделения") + "</select>"),
+    function (el) { return api("member_add", { discord_id: $("#a1", el).value, discord_name: $("#a2", el).value, callsign: $("#a3", el).value, rank_id: $("#a4", el).value, unit_id: $("#a5", el).value }).then(function () { X.toast("Боец добавлен в ростер"); return true; }); }, "Добавить").then(function (ok) { if (ok === true) { D = null; go(tab); } return ok; });
+}
+
+/* ---------- личное дело ---------- */
+async function openMember(id) {
+  var r; try { r = await api("member_get", { discord_id: id }); await data(); } catch (e) { return fail(e); }
+  var changed = false;
+  await X.modal({ title: "Личное дело", wide: true, html: '<div id="dt"></div>', buttons: [{ label: "Закрыть", value: 1 }], onOpen: function (el) {
+    function render() {
+      var m = r.member, dis = m.status === "discharged";
+      $("#dt", el).innerHTML = '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span style="font:700 26px var(--display);letter-spacing:.06em">' + esc(m.callsign) + "</span>" + bdg(m.status) + (m.is_instructor ? '<span class="bdg solid">ИНСТРУКТОР</span>' : "") + "</div>" +
+        '<div class="kv"><div><small>DISCORD ID</small><span>' + esc(m.discord_id) + "</span></div><div><small>DISCORD НИК</small><span>" + esc(m.discord_name || "—") + "</span></div><div><small>РАНГ</small><span>" + esc(rn(m.rank_id)) + "</span></div><div><small>ПОДРАЗДЕЛЕНИЕ</small><span>" + esc(un(m.unit_id)) + "</span></div><div><small>ВСТУПИЛ</small><span>" + esc(X.fmtDay(m.joined_at)) + "</span></div></div>" +
+        (can(2) ? '<div class="stb">' + (dis ? '<button class="btn sm solid" data-a="reinstate" type="button">Восстановить</button>' : '<button class="btn sm solid" data-a="promotion" type="button">Повысить</button><button class="btn sm" data-a="demotion" type="button">Понизить</button><button class="btn sm" data-a="transfer" type="button">Перевести</button><button class="btn sm ghost" data-a="leave" type="button">' + (m.status === "leave" ? "Вернуть из отпуска" : "В отпуск") + '</button><button class="btn sm ghost" data-a="discharge" type="button">Исключить</button>') + '<button class="btn sm ghost" data-a="instr" type="button">' + (m.is_instructor ? "Снять инструктора" : "Назначить инструктором") + '</button><button class="btn sm ghost" data-a="name" type="button">Позывной</button></div>' : "") +
+        (r.instructor ? '<div class="box" style="margin:12px 0"><h3>Академическая деятельность</h3><div class="kv"><div><small>ПРОВЕДЕНО ЭТАПОВ</small><span>' + r.instructor.stages + "</span></div><div><small>ЭТАПОВ СДАНО</small><span>" + r.instructor.passed + "</span></div><div><small>ВЫПУСКНИКОВ</small><span>" + r.instructor.graduates + "</span></div></div></div>" : "") +
+        '<h3 style="font:700 13px var(--display);letter-spacing:.2em;margin:20px 0 10px">ИСТОРИЯ ПОВЫШЕНИЙ</h3><div class="hist">' + (r.history.length ? r.history.map(function (p) { return "<div><b>" + esc(KL[p.kind] || p.kind) + "</b> · " + esc(p.kind === "transfer" ? un(p.from_unit) + " → " + un(p.to_unit) : rn(p.from_rank) + " → " + rn(p.to_rank)) + " · " + esc(p.reason) + "<small>" + esc(p.promoted_by) + " · " + esc(X.fmtDate(p.promoted_at)) + "</small></div>"; }).join("") : "<div>История пуста</div>") + "</div>" +
+        (r.notes ? '<h3 style="font:700 13px var(--display);letter-spacing:.2em;margin:22px 0 4px">ЗАМЕТКИ ОФИЦЕРОВ <span class="bdg">ТОЛЬКО КОМАНДОВАНИЕ</span></h3>' + (r.notes.length ? r.notes.map(function (n) { return '<div class="note"><small>' + esc(n.author) + " · " + esc(X.fmtDate(n.created_at)) + "</small>" + esc(n.text) + "</div>"; }).join("") : '<div class="empty" style="padding:16px">Заметок нет</div>') + '<div class="fld" style="margin-top:12px"><label for="nt">Новая заметка</label><textarea class="fi" id="nt" maxlength="2000"></textarea></div><button class="btn sm" id="nb" type="button">Добавить заметку</button>' : "");
+      bind();
+    }
+    async function refresh() { try { r = await api("member_get", { discord_id: id }); await data(true); changed = true; render(); } catch (e) { fail(e); } }
+    function bind() {
+      $$("[data-a]", el).forEach(function (b) { b.onclick = async function () {
+        var a = b.dataset.a, m = r.member, ok;
+        if (a === "leave") { try { await api("member_update", { discord_id: id, status: m.status === "leave" ? "active" : "leave" }); X.toast("Статус изменён"); refresh(); } catch (e) { fail(e); } return; }
+        if (a === "instr") { try { await api("member_update", { discord_id: id, is_instructor: !m.is_instructor }); X.toast("Готово"); refresh(); } catch (e) { fail(e); } return; }
+        if (a === "name") { ok = await X.formModal("Позывной", field("cn", "Новый позывной", '<input class="fi" id="cn" maxlength="40" value="' + esc(m.callsign) + '">'), function (e2) { return api("member_update", { discord_id: id, callsign: $("#cn", e2).value }).then(function () { return true; }); }); }
+        else ok = await change(a, m);
+        if (ok === true) refresh();
+      }; });
+      var nb = $("#nb", el); if (nb) nb.onclick = async function () { var t = $("#nt", el).value.trim(); if (!t) return X.toast("Введите текст заметки.", true); nb.disabled = true; try { await api("member_note", { discord_id: id, text: t }); X.toast("Заметка добавлена"); refresh(); } catch (e) { fail(e); nb.disabled = false; } };
+    }
+    render();
+  } });
+  if (changed) go(tab);
+}
+function change(kind, m) {
+  var lvl = ownLevel(), cr = rankOf(m.rank_id), cur = cr ? cr.level : -1, title = { promotion: "Повышение", demotion: "Понижение", transfer: "Перевод", discharge: "Исключение из состава", reinstate: "Восстановление" }[kind];
+  var rs = D.ranks.filter(function (r) { return kind === "promotion" ? r.level > cur && r.level < lvl : kind === "demotion" ? r.level < cur : kind === "reinstate" ? r.level < lvl : false; }).map(function (r) { return [r.id, r.name + " (ур. " + r.level + ")"]; });
+  var us = D.units.filter(function (u) { return kind !== "transfer" || u.id !== m.unit_id; }).map(function (u) { return [u.id, u.name]; }), body = "";
+  if (kind === "promotion" || kind === "demotion") { if (!rs.length) { X.toast(kind === "promotion" ? "Нет рангов выше текущего, доступных вам." : "Нет рангов ниже текущего.", true); return Promise.resolve(null); } body += field("c1", "Новый ранг", '<select class="fi" id="c1">' + opts(rs, 0, "") + "</select>", "Текущий: " + rn(m.rank_id)); }
+  if (kind === "transfer") body += field("c2", "Новое подразделение", '<select class="fi" id="c2">' + opts(us, 0, "") + "</select>", "Текущее: " + un(m.unit_id));
+  if (kind === "reinstate") body += field("c1", "Ранг (необязательно)", '<select class="fi" id="c1">' + opts(rs, 0, "", "Оставить прежний") + "</select>") + field("c2", "Подразделение (необязательно)", '<select class="fi" id="c2">' + opts(us, 0, "", "Оставить прежнее") + "</select>");
+  body += field("c3", "Причина", '<textarea class="fi" id="c3" maxlength="500"></textarea>', "Попадёт в историю навсегда: записи о повышениях не удаляются.");
+  if (kind === "promotion" || kind === "demotion") body += '<label style="display:flex;gap:10px;align-items:center;text-transform:none;letter-spacing:0;font:400 14px var(--body)"><input type="checkbox" id="c4"> Синхронизировать роль в Discord (нужен discord_role_id у рангов и бот)</label>';
+  if (kind === "discharge") body = '<p>Боец <b>' + esc(m.callsign) + "</b> будет исключён из состава. Запись останется в истории.</p>" + body;
+  return X.formModal(title + ": " + m.callsign, body, function (el) {
+    var reason = $("#c3", el).value.trim(); if (reason.length < 3) throw new Error("Укажите причину (минимум 3 символа).");
+    return api("member_promote", { discord_id: m.discord_id, kind: kind, reason: reason, to_rank: $("#c1", el) ? $("#c1", el).value : null, to_unit: $("#c2", el) ? $("#c2", el).value : null, sync_discord: !!($("#c4", el) && $("#c4", el).checked) }).then(function (res) { X.toast(title + ": выполнено"); if (res.discord && !res.discord.ok) X.toast("Роль Discord не изменена: " + res.discord.error, true); else if (res.discord) X.toast("Роль Discord обновлена"); return true; });
+  }, kind === "discharge" ? "Исключить" : "Применить");
+}
+
+/* ---------- подразделения ---------- */
+async function vUnits() {
+  var r = await api("units_list"); D = D || { ranks: r.ranks, units: r.units, members: r.members };
+  $("#view").innerHTML = '<div class="cards">' + r.units.map(function (u) {
+    var ms = r.members.filter(function (m) { return m.unit_id === u.id && m.status !== "discharged"; }), act = ms.filter(function (m) { return m.status === "active"; }).length, cm = r.members.filter(function (m) { return m.discord_id === u.commander_id; })[0];
+    var dist = r.ranks.map(function (k) { var n = ms.filter(function (m) { return m.rank_id === k.id; }).length; return n ? esc(k.name) + ": " + n : ""; }).filter(Boolean).join(" · ");
+    return '<div class="ucard"><h3>' + esc(u.name) + "</h3><p>Командир: " + (cm ? '<a href="#" data-m="' + esc(cm.discord_id) + '" style="text-decoration:underline">' + esc(cm.callsign) + "</a>" : "не назначен") + '</p><div style="display:flex;gap:26px;margin-bottom:12px"><div><div class="big">' + ms.length + '</div><small class="mono" style="font:500 10px var(--mono);letter-spacing:.2em;color:#8e8e8e">В СОСТАВЕ</small></div><div><div class="big">' + act + '</div><small class="mono" style="font:500 10px var(--mono);letter-spacing:.2em;color:#8e8e8e">АКТИВНЫХ</small></div></div><p style="font-size:13px">' + (dist || "Состав пуст") + '</p><button class="btn ghost sm" data-u="' + u.id + '" type="button">Показать состав</button></div>';
+  }).join("") + "</div>";
+  $$("[data-m]").forEach(function (a) { a.onclick = function (e) { e.preventDefault(); openMember(a.dataset.m); }; });
+  $$("[data-u]").forEach(function (b) { b.onclick = function () { F = { q: "", unit: b.dataset.u, rank: "all", status: "all" }; go("roster"); }; });
+}
+
+/* ---------- академия ---------- */
+async function vAcademy() {
+  var a = await api("academy_list"); await data();
+  var me = mOf(U.discord_id), conduct = can(2) || (me && me.is_instructor && me.status === "active");
+  function chips(rc) { return '<div class="chips">' + [1, 2, 3].map(function (s) { var rs = a.results.filter(function (x) { return x.recruit_id === rc.id && x.stage === s; }), ok = rs.some(function (x) { return x.passed; }); return '<span class="chip ' + (ok ? "ok" : rs.length ? "no" : "") + '" title="Этап ' + s + '">' + (ok ? "✓" : rs.length ? "✗" : s) + "</span>"; }).join("") + "</div>"; }
+  var SN = { 1: "ПВП", 2: "Устав", 3: "База и морфы" }, SS = { training: "Обучение", graduated: "Выпускник", dropped: "Отчислен" };
+  $("#view").innerHTML = '<div class="tools"><span style="font:500 11px var(--mono);letter-spacing:.14em;color:#8e8e8e">ЭТАПЫ: 1 — ПВП · 2 — УСТАВ · 3 — БАЗА И МОРФЫ</span>' + (can(2) ? '<button class="btn sm" id="ar" type="button" style="margin-left:auto">Добавить новобранца</button>' : "") + '</div><div class="tw">' + (a.recruits.length ? "<table><thead><tr><th>Новобранец</th><th>Этапы</th><th>Статус</th><th>Начал</th><th>Действия</th></tr></thead><tbody>" + a.recruits.map(function (rc) {
+    var passed = a.results.filter(function (x) { return x.recruit_id === rc.id && x.passed; }).map(function (x) { return x.stage; }), next = [1, 2, 3].filter(function (s) { return passed.indexOf(s) < 0; })[0], act = "";
+    if (rc.status === "training" && conduct && rc.discord_id !== U.discord_id) act += '<button class="btn sm" data-s="' + rc.id + '|' + next + '|1" type="button">Сдал: ' + esc(SN[next]) + '</button> <button class="btn ghost sm" data-s="' + rc.id + '|' + next + '|0" type="button">Не сдал</button> ';
+    if (rc.status === "training" && can(2)) act += '<button class="btn ghost sm" data-d="' + rc.id + '" type="button">Отчислить</button>';
+    if (rc.status === "graduated" && can(2) && !mOf(rc.discord_id)) act += '<button class="btn sm solid" data-e="' + esc(rc.discord_id) + "|" + esc(rc.callsign) + '" type="button">Зачислить в состав</button>';
+    return "<tr><td><b>" + esc(rc.callsign) + '</b><br><span class="mono" style="font-size:11px;color:#8e8e8e">' + esc(rc.discord_id) + "</span></td><td>" + chips(rc) + '</td><td><span class="bdg ' + (rc.status === "graduated" ? "solid" : rc.status === "dropped" ? "discharged" : "active") + '">' + esc(SS[rc.status]) + "</span></td><td>" + esc(X.fmtDay(rc.started_at)) + "</td><td>" + (act || "—") + "</td></tr>";
+  }).join("") + "</tbody></table>" : '<div class="empty">Новобранцев пока нет</div>') + '</div><h3 style="font:700 13px var(--display);letter-spacing:.2em;color:#8e8e8e;margin:26px 0 12px">ИНСТРУКТОРЫ</h3><div class="tw">' + (a.instructors.length ? "<table><thead><tr><th>Инструктор</th><th>Проведено этапов</th><th>Из них сдано</th><th>Выпускников</th></tr></thead><tbody>" + a.instructors.map(function (i) { return '<tr class="click" data-m="' + esc(i.discord_id) + '"><td><b>' + esc(i.callsign) + "</b></td><td>" + i.stages + "</td><td>" + i.passed + "</td><td>" + i.graduates + "</td></tr>"; }).join("") + "</tbody></table>" : '<div class="empty">Инструкторы не назначены (отметьте бойца в его личном деле)</div>') + "</div>";
+  bindOpen($("#view"));
+  if ($("#ar")) $("#ar").onclick = function () { X.formModal("Новобранец", field("r1", "Discord ID", '<input class="fi" id="r1" inputmode="numeric">') + field("r2", "Позывной", '<input class="fi" id="r2" maxlength="40">'), function (el) { return api("academy_add", { discord_id: $("#r1", el).value, callsign: $("#r2", el).value }).then(function () { X.toast("Новобранец добавлен"); return true; }); }, "Добавить").then(function (ok) { if (ok === true) go("academy"); }); };
+  $$("[data-s]").forEach(function (b) { b.onclick = function () { var p = b.dataset.s.split("|"); X.formModal(Number(p[2]) ? "Этап сдан" : "Этап не сдан", field("n1", "Комментарий (необязательно)", '<textarea class="fi" id="n1" maxlength="500"></textarea>', "Этап " + p[1] + ": " + SN[p[1]]), function (el) { return api("academy_stage", { recruit_id: p[0], stage: Number(p[1]), passed: p[2] === "1", note: $("#n1", el).value }).then(function (r) { X.toast(r.graduated ? "Новобранец выпущен из академии" : "Результат записан"); return true; }); }, "Записать").then(function (ok) { if (ok === true) go("academy"); }); }; });
+  $$("[data-d]").forEach(function (b) { b.onclick = async function () { if (!await X.confirmBox("Отчислить новобранца?", "Новобранец будет отчислен из академии.", "Отчислить")) return; try { await api("academy_drop", { recruit_id: b.dataset.d }); X.toast("Отчислен"); go("academy"); } catch (e) { fail(e); } }; });
+  $$("[data-e]").forEach(function (b) { b.onclick = function () { var p = b.dataset.e.split("|"); addMember({ discord_id: p[0], callsign: p[1] }).then(function (ok) { if (ok === true) go("academy"); }); }; });
+}
+
+})();
+</script>
+</body>
+</html>

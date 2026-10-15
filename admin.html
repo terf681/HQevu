@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EVU // HQ — Админка</title>
+<meta name="robots" content="noindex,nofollow">
+<meta name="color-scheme" content="dark">
+<link rel="stylesheet" href="hq.css">
+</head>
+<body>
+<div class="bg" aria-hidden="true"><div class="g"></div><div class="s"></div></div>
+<div class="wrap" id="boot"><div class="panel"><span class="tag" id="bt">ПРОВЕРКА ДОСТУПА...</span></div></div>
+
+<div class="shell" id="shell" hidden>
+  <aside class="side">
+    <a class="brand" href="admin.html"><svg viewBox="0 0 120 120" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="60" cy="60" r="56"/><circle cx="60" cy="60" r="42" stroke-dasharray="3 5"/><path d="M30 32 L60 92 L90 32"/><path d="M45 32 L60 62 L75 32"/></svg><span><b>EVU // ADMIN</b><small>HQ CONTROL</small></span></a>
+    <nav class="tabs" id="tabs" aria-label="Разделы админки">
+      <button class="tab on" data-t="keys" type="button">Ключи доступа</button>
+      <button class="tab" data-t="ranks" type="button">Ранги</button>
+      <button class="tab" data-t="units" type="button">Подразделения</button>
+      <button class="tab" data-t="log" type="button">Журнал</button>
+      <a class="tab" href="index.html">← Назад в Штаб</a>
+    </nav>
+    <div class="me"><span>ВЫ ВОШЛИ КАК</span><b id="meN">—</b><span id="meR">—</span></div>
+  </aside>
+  <div class="mainc">
+    <div class="top"><h2 id="vt">Ключи доступа</h2><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><a class="btn ghost sm" href="index.html">← Штаб</a><button class="btn ghost sm" id="refresh" type="button">Обновить</button><button class="btn ghost sm" id="out" type="button">Выйти</button></div></div>
+    <div class="view" id="view"></div>
+  </div>
+</div>
+<div class="demo" id="demo" hidden>DEMO MODE // ДАННЫЕ ТОЛЬКО В ЭТОМ БРАУЗЕРЕ // РЕАЛЬНАЯ БАЗА ПОДКЛЮЧАЕТСЯ ЧЕРЕЗ SUPABASE (config.js)</div>
+
+<script src="config.js"></script>
+<script src="core.js"></script>
+<script>
+(function () {
+"use strict";
+var X = HQ.ui, $ = X.$, $$ = X.$$, esc = X.esc, api = HQ.api, U = null, D = null, tab = "keys";
+var TT = { keys: "Ключи доступа", ranks: "Ранги", units: "Подразделения", log: "Журнал" };
+function fail(e) { if (e && e.code === "unauthorized") { location.replace("login.html"); return; } X.toast(e && e.message || "Ошибка", true); }
+async function data(force) { if (!D || force) D = await api("members_list"); return D; }
+var mOf = function (id) { return D.members.filter(function (m) { return m.discord_id === id; })[0]; };
+function opts(list, val, sel, blank) { return (blank ? '<option value="">' + esc(blank) + "</option>" : "") + list.map(function (x) { return '<option value="' + esc(x[0]) + '"' + (String(x[0]) === String(sel) ? " selected" : "") + ">" + esc(x[1]) + "</option>"; }).join(""); }
+function field(id, label, ctl, hint) { return '<div class="fld"><label for="' + id + '">' + esc(label) + "</label>" + ctl + (hint ? '<div class="h">' + esc(hint) + "</div>" : "") + "</div>"; }
+if (!HQ.configured) $("#demo").hidden = false;
+
+HQ.check().then(function (u) {
+  if (!u) return location.replace("login.html");
+  if (u.role !== "owner") { $("#boot").innerHTML = '<div class="panel"><span class="tag">ДОСТУП ЗАПРЕЩЁН</span><h1>Только для владельца</h1><p class="sub">Админка доступна ключам с ролью owner.</p><a class="btn ghost" href="index.html">Вернуться в Штаб</a></div>'; return; }
+  U = u; $("#boot").hidden = true; $("#shell").hidden = false; $("#meN").textContent = u.name; $("#meR").textContent = "РОЛЬ // " + HQ.ROLES[u.role];
+  go(location.hash.slice(1) || "keys");
+}, function (e) { $("#bt").textContent = e.message; });
+$("#tabs").onclick = function (e) { var b = e.target.closest("button.tab"); if (b) go(b.dataset.t); };
+$("#refresh").onclick = function () { D = null; go(tab); };
+$("#out").onclick = function () { HQ.logout().then(function () { location.replace("login.html"); }); };
+window.addEventListener("hashchange", function () { var t = location.hash.slice(1); if (TT[t] && t !== tab) go(t); });
+
+function go(t) {
+  if (!TT[t]) t = "keys"; tab = t; history.replaceState(null, "", "#" + t);
+  $$("button.tab").forEach(function (b) { b.classList.toggle("on", b.dataset.t === t); }); $("#vt").textContent = TT[t];
+  var v = $("#view"); v.classList.remove("view"); void v.offsetWidth; v.classList.add("view"); inner();
+}
+async function inner() {
+  var v = $("#view"); v.innerHTML = '<div class="box"><div class="skl"></div><div class="skl" style="width:70%"></div></div>';
+  try { await ({ keys: sKeys, ranks: sRanks, units: sUnits, log: sLog })[tab](v); } catch (e) { if (e.code === "unauthorized") return fail(e); v.innerHTML = '<div class="box empty">' + esc(e.message) + '<br><br><button class="btn ghost sm" id="rr" type="button">Повторить</button></div>'; $("#rr").onclick = inner; }
+}
+
+async function sKeys(s) {
+  var r = await api("keys_list"), now = Date.now();
+  s.innerHTML = '<div class="tools"><button class="btn sm solid" id="nk" type="button">Сгенерировать ключ</button></div><div class="tw">' + (r.items.length ? "<table><thead><tr><th>Игрок</th><th>Роль</th><th>Ключ</th><th>Срок</th><th>Последний вход</th><th>Статус</th><th></th></tr></thead><tbody>" + r.items.map(function (k) {
+    var st = k.revoked ? "ОТОЗВАН" : k.expires_at && new Date(k.expires_at) <= now ? "ИСТЁК" : "АКТИВЕН";
+    return "<tr><td><b>" + esc(k.discord_name) + '</b><br><span class="mono" style="font-size:11px;color:#8e8e8e">' + esc(k.discord_id) + "</span></td><td>" + esc(HQ.ROLES[k.role]) + '</td><td class="mono">…' + esc(k.key_hint) + "</td><td>" + (k.expires_at ? esc(X.fmtDate(k.expires_at)) : "бессрочно") + "</td><td>" + (k.last_used_at ? esc(X.fmtDate(k.last_used_at)) : "—") + '</td><td><span class="bdg ' + (st === "АКТИВЕН" ? "active" : "discharged") + '">' + st + "</span></td><td>" + (st === "АКТИВЕН" ? '<button class="btn ghost sm" data-rk="' + esc(k.id) + '" type="button">Отозвать</button>' : "") + "</td></tr>";
+  }).join("") + "</tbody></table>" : '<div class="empty">Ключей пока нет</div>') + '</div><p class="mono" style="font:500 11px/1.8 var(--mono);letter-spacing:.08em;color:#585858;margin-top:12px">Сам ключ хранится только в виде хэша и показывается один раз при создании. Потерянный ключ нужно отозвать и выпустить новый.</p>';
+  $("#nk").onclick = function () {
+    X.formModal("Новый ключ доступа", field("k1", "Discord ID игрока", '<input class="fi" id="k1" inputmode="numeric">') + field("k2", "Ник в Discord", '<input class="fi" id="k2" maxlength="60">') + field("k3", "Роль", '<select class="fi" id="k3"><option value="member">Боец (member)</option><option value="commander">Командир (commander)</option><option value="owner">Владелец (owner)</option></select>') + field("k4", "Срок действия", '<select class="fi" id="k4"><option value="24h">24 часа</option><option value="7d" selected>7 дней</option><option value="30d">30 дней</option><option value="never">Бессрочно</option></select>'),
+      function (el) { return api("create_key", { discord_id: $("#k1", el).value, discord_name: $("#k2", el).value, role: $("#k3", el).value, ttl: $("#k4", el).value }); }, "Сгенерировать").then(function (res) {
+      if (!res || !res.key) return;
+      X.modal({ title: "Ключ создан", html: '<div class="keybox" id="kv">' + esc(res.key) + '</div><div class="warn">Скопируйте ключ сейчас: после закрытия окна он больше не будет показан.</div>', buttons: [{ label: "Копировать", cls: "solid", onClick: function () { X.copyText(res.key).then(function () { X.toast("Ключ скопирован"); }, function () { X.toast("Не удалось скопировать — выделите ключ вручную", true); }); return false; } }, { label: "Готово", value: 1 }] }).then(function () { inner(); });
+    });
+  };
+  $$("[data-rk]").forEach(function (b) { b.onclick = async function () { if (!await X.confirmBox("Отозвать ключ?", "Все сессии по этому ключу будут завершены сразу.", "Отозвать")) return; try { await api("revoke_key", { id: b.dataset.rk }); X.toast("Ключ отозван"); inner(); } catch (e) { fail(e); } }; });
+}
+async function sRanks(s) {
+  var r = await data(true);
+  s.innerHTML = '<div class="tools"><button class="btn sm solid" id="nr" type="button">Добавить ранг</button></div><div class="tw">' + (r.ranks.length ? "<table><thead><tr><th>Уровень</th><th>Название</th><th>Роль Discord (ID)</th><th></th></tr></thead><tbody>" + r.ranks.map(function (k) { return "<tr><td><b>" + k.level + "</b></td><td>" + esc(k.name) + '</td><td class="mono">' + esc(k.discord_role_id || "—") + '</td><td><button class="btn ghost sm" data-e="' + k.id + '" type="button">Изменить</button> <button class="btn ghost sm" data-x="' + k.id + '" type="button">Удалить</button></td></tr>'; }).join("") + "</tbody></table>" : '<div class="empty">Рангов нет. Создайте структуру рангов вашей организации.</div>') + '</div><p class="mono" style="font:500 11px/1.8 var(--mono);color:#585858;margin-top:12px">Больший уровень — выше ранг. Командир может повышать только до рангов ниже своего.</p>';
+  function edit(k) { X.formModal(k ? "Изменить ранг" : "Новый ранг", field("g1", "Название", '<input class="fi" id="g1" maxlength="40" value="' + esc(k ? k.name : "") + '">') + field("g2", "Уровень (0–1000)", '<input class="fi" id="g2" inputmode="numeric" value="' + (k ? k.level : "") + '">') + field("g3", "ID роли Discord (необязательно)", '<input class="fi" id="g3" inputmode="numeric" value="' + esc(k && k.discord_role_id || "") + '">', "Нужен для синхронизации ролей при повышении."), function (el) { return api("rank_save", { id: k && k.id, name: $("#g1", el).value, level: $("#g2", el).value, discord_role_id: $("#g3", el).value }).then(function () { X.toast("Ранг сохранён"); return true; }); }).then(function (ok) { if (ok === true) inner(); }); }
+  $("#nr").onclick = function () { edit(null); };
+  $$("[data-e]", s).forEach(function (b) { b.onclick = function () { edit(r.ranks.filter(function (k) { return String(k.id) === b.dataset.e; })[0]); }; });
+  $$("[data-x]", s).forEach(function (b) { b.onclick = async function () { if (!await X.confirmBox("Удалить ранг?", "Ранг можно удалить, только если он нигде не используется.", "Удалить")) return; try { await api("rank_delete", { id: Number(b.dataset.x) }); X.toast("Ранг удалён"); inner(); } catch (e) { fail(e); } }; });
+}
+async function sUnits(s) {
+  var r = await data(true);
+  s.innerHTML = '<div class="tools"><button class="btn sm solid" id="nu" type="button">Добавить подразделение</button></div><div class="tw"><table><thead><tr><th>Название</th><th>Командир</th><th>Бойцов</th><th></th></tr></thead><tbody>' + r.units.map(function (u) { var c = mOf(u.commander_id); return "<tr><td><b>" + esc(u.name) + "</b></td><td>" + esc(c ? c.callsign : "—") + "</td><td>" + r.members.filter(function (m) { return m.unit_id === u.id && m.status !== "discharged"; }).length + '</td><td><button class="btn ghost sm" data-e="' + u.id + '" type="button">Изменить</button> <button class="btn ghost sm" data-x="' + u.id + '" type="button">Удалить</button></td></tr>'; }).join("") + "</tbody></table></div>";
+  function edit(u) { var cands = r.members.filter(function (m) { return m.status === "active"; }).map(function (m) { return [m.discord_id, m.callsign]; }); X.formModal(u ? "Изменить подразделение" : "Новое подразделение", field("u1", "Название", '<input class="fi" id="u1" maxlength="60" value="' + esc(u ? u.name : "") + '">') + field("u2", "Командир", '<select class="fi" id="u2">' + opts(cands, 0, u && u.commander_id, "Не назначен") + "</select>"), function (el) { return api("unit_save", { id: u && u.id, name: $("#u1", el).value, commander_id: $("#u2", el).value || null }).then(function () { X.toast("Подразделение сохранено"); return true; }); }).then(function (ok) { if (ok === true) inner(); }); }
+  $("#nu").onclick = function () { edit(null); };
+  $$("[data-e]", s).forEach(function (b) { b.onclick = function () { edit(r.units.filter(function (u) { return String(u.id) === b.dataset.e; })[0]); }; });
+  $$("[data-x]", s).forEach(function (b) { b.onclick = async function () { if (!await X.confirmBox("Удалить подразделение?", "Удаление возможно, только если в нём нет бойцов.", "Удалить")) return; try { await api("unit_delete", { id: Number(b.dataset.x) }); X.toast("Подразделение удалено"); inner(); } catch (e) { fail(e); } }; });
+}
+async function sLog(s) {
+  var r = await api("log_list", { limit: 300 }), AL = { login: "Вход", create_key: "Создан ключ", revoke_key: "Отозван ключ", member_add: "Добавлен боец", member_update: "Изменён боец", member_note: "Заметка", promotion: "Повышение", demotion: "Понижение", transfer: "Перевод", discharge: "Исключение", reinstate: "Восстановление", unit_save: "Подразделение сохранено", unit_delete: "Подразделение удалено", rank_save: "Ранг сохранён", rank_delete: "Ранг удалён", academy_add: "Новобранец добавлен", academy_stage: "Этап академии", academy_drop: "Отчисление" };
+  s.innerHTML = '<div class="box">' + (r.items.length ? r.items.map(function (l) { return '<div class="row"><span><b>' + esc(AL[l.action] || l.action) + "</b> · " + esc(l.admin_name || "—") + (l.target ? " · " + esc(l.target) : "") + "</span><small>" + esc(X.fmtDate(l.created_at)) + "</small></div>"; }).join("") : '<div class="empty">Записей нет</div>') + "</div>";
+}
+})();
+</script>
+</body>
+</html>
